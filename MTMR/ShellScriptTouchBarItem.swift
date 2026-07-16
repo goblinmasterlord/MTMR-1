@@ -60,7 +60,7 @@ class ShellScriptTouchBarItem: CustomButtonTouchBarItem {
         
         // Update UI
         DispatchQueue.main.async { [weak self, newBackgoundColor] in
-            if (newBackgoundColor != self?.backgroundColor) { // performance optimization because of reinstallButton
+            if let newBackgoundColor = newBackgoundColor, newBackgoundColor != self?.backgroundColor { // performance optimization because of reinstallButton; don't wipe a statically-configured background when the script emits no ANSI color
                 self?.backgroundColor = newBackgoundColor
             }
             self?.attributedTitle = title
