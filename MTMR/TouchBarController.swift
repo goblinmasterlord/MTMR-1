@@ -77,6 +77,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     var touchBar: NSTouchBar!
 
     fileprivate var lastPresetPath = ""
+    fileprivate var isVisible = false
     var jsonItems: [BarItemDefinition] = []
     var itemDefinitions: [NSTouchBarItem.Identifier: BarItemDefinition] = [:]
     var items: [NSTouchBarItem.Identifier: NSTouchBarItem] = [:]
@@ -164,7 +165,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         return changed
     }
     
-    func prepareTouchBar() {
+    @discardableResult func prepareTouchBar() -> Bool {
         let prevItems = items
         let prevSwipeItems = swipeItems
 
@@ -173,9 +174,9 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         let changed = didItemsChange(prevItems: prevItems, prevSwipeItems: prevSwipeItems)
 
         if !changed {
-            return
+            return false
         }
-        
+
         let centerItems = centerIdentifiers.compactMap({ (identifier) -> NSTouchBarItem? in
             items[identifier]
         })
@@ -197,6 +198,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
 
         basicView = BasicView(identifier: basicViewIdentifier, items:leftItems + [scrollArea] + rightItems, swipeItems: swipeItems)
         basicView?.legacyGesturesEnabled = AppSettings.multitouchGestures
+
+        return true
     }
 
     @objc func activeApplicationChanged(_: Notification) {
@@ -207,9 +210,11 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         if frontmostApplicationIdentifier != nil && blacklistAppIdentifiers.firstIndex(of: frontmostApplicationIdentifier!) != nil {
             dismissTouchBar()
         } else {
-            prepareTouchBar()
+            let changed = prepareTouchBar()
             if touchBarContainsAnyItems() {
-                presentTouchBar()
+                if changed || !isVisible {
+                    presentTouchBar()
+                }
             } else {
                 dismissTouchBar()
             }
@@ -299,6 +304,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     }
 
     @objc private func presentTouchBar() {
+        isVisible = true
         if AppSettings.showControlStripState {
             presentSystemModal(touchBar, systemTrayItemIdentifier: .controlStripItem)
         } else {
@@ -308,6 +314,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     }
 
     @objc private func dismissTouchBar() {
+        isVisible = false
         if touchBarContainsAnyItems() {
             minimizeSystemModal(touchBar)
         }
