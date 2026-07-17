@@ -78,6 +78,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
 
     fileprivate var lastPresetPath = ""
     fileprivate var isVisible = false
+    fileprivate var needsRebuild = true
+    fileprivate var lastVisibleIdentifiers: Set<NSTouchBarItem.Identifier> = []
     var jsonItems: [BarItemDefinition] = []
     var itemDefinitions: [NSTouchBarItem.Identifier: BarItemDefinition] = [:]
     var items: [NSTouchBarItem.Identifier: NSTouchBarItem] = [:]
@@ -135,6 +137,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         touchBar = NSTouchBar()
         jsonItems = newJsonItems
         itemDefinitions = [:]
+        needsRebuild = true
 
         loadItemDefinitions(jsonItems: jsonItems)
         
@@ -166,6 +169,16 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     }
     
     @discardableResult func prepareTouchBar() -> Bool {
+        // An app switch must not rebuild items when the effective item set is unchanged.
+        // Rebuilding constructs fresh views (e.g. ShellScriptTouchBarItem's "⏳" placeholder)
+        // and restarts their script timers, which flashes on screen on every switch.
+        let currentVisible = visibleIdentifiers()
+        if !needsRebuild && currentVisible == lastVisibleIdentifiers {
+            return false
+        }
+        needsRebuild = false
+        lastVisibleIdentifiers = currentVisible
+
         let prevItems = items
         let prevSwipeItems = swipeItems
 
@@ -262,24 +275,30 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         }
     }
 
+    func shouldShow(_ definition: BarItemDefinition) -> Bool {
+        guard let frontApp = frontmostApplicationIdentifier,
+            case let .matchAppId(regexString)? = definition.additionalParameters[.matchAppId] else {
+            return true
+        }
+        let regex = try! NSRegularExpression(pattern: regexString)
+        let range = NSRange(location: 0, length: frontApp.count)
+        return regex.firstMatch(in: frontApp, range: range) != nil
+    }
+
+    func visibleIdentifiers() -> Set<NSTouchBarItem.Identifier> {
+        var result: Set<NSTouchBarItem.Identifier> = []
+        for (identifier, definition) in itemDefinitions where shouldShow(definition) {
+            result.insert(identifier)
+        }
+        return result
+    }
+
     func createItems() {
         items = [:]
         swipeItems = []
 
         for (identifier, definition) in itemDefinitions {
-            var show = true
-            
-            if let frontApp = frontmostApplicationIdentifier {
-                if case let .matchAppId(regexString)? = definition.additionalParameters[.matchAppId] {
-                    let regex = try! NSRegularExpression(pattern: regexString)
-                    let range = NSRange(location: 0, length: frontApp.count)
-                    if regex.firstMatch(in: frontApp, range: range) == nil {
-                        show = false
-                    }
-                }
-            }
-            
-            if show {
+            if shouldShow(definition) {
                 let item = createItem(forIdentifier: identifier, definition: definition)
                 if item is SwipeItem {
                     swipeItems.append(item as! SwipeItem)
